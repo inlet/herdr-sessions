@@ -56,10 +56,12 @@ export function sessionDetail(s, st, t, { back, resume, copy }) {
             .child(div().flex_none().text_color(stateColor(state.key, t)).child('●')).child(state.label)))
           // The permission mode it started in (Claude Code's, Grok's YOLO): Resume starts it in that mode again.
           .when(Boolean(s.startMode), el => el.child(fact('Started in', modeLabel(s.startMode))))
-          .child(fact('Folder', h_flex().gap(6).flex_wrap().child(folder(s.cwd))
+          // min_w(0): a long path wraps instead of running out of the panel.
+          .child(fact('Folder', h_flex().gap(6).flex_wrap().child(div().min_w(0).child(folder(s.cwd)))
             .when(!s.exists, el => el.child(div().text_color(t.ansi1).child('missing')))))
           .when(Boolean(s.branch), el => el.child(fact('Branch', s.branch === 'HEAD' ? 'none (detached HEAD)'
-            : h_flex().gap(5).items_center().child(branchIcon(t.dim)).child(div().min_w(0).child(s.branch)))))
+            // The icon on the first line of a branch that wraps: 13px centered in a 12px line (×1.618).
+            : h_flex().gap(5).items_start().child(branchIcon(t.dim).mt(3)).child(div().min_w(0).child(s.branch)))))
           .when(Boolean(st.spaceName), el => el.child(fact('Space', st.spaceName)))
           .child(fact('Last active', formatSessionTime(s.activity * 1000)))
           .when(Boolean(started), el => el.child(fact('Started', started)))
