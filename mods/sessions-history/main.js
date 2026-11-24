@@ -3,7 +3,7 @@ import { v_flex, h_flex, InputState, Input, Scrollbar, VirtualListScrollHandle, 
 import { exec, home, appHome, checking, theme, run, focused, spaces, panes, layout, knownAgents, settings,
   props, openOverlay, closeOverlay, notify } from 'herdr';
 import { resumePlan, matchingSpace, filterSessions, spaceScope, repoFromGit, ago, sessionState, placeFromGit, placeFromPath,
-  spaceFolders, spacePlaces, labelPlace, COPIES, copyValues } from './logic.mjs';
+  spaceFolders, spacePlaces, labelPlace, sidebarSpace, COPIES, copyValues } from './logic.mjs';
 import { sessionDetail } from './details.js';
 import { segmented, iconButton, placeLine } from './ui.js';
 
@@ -243,8 +243,10 @@ export default class SessionHistory extends View {
       .bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13);
     const d = this.opened;
     if (d) {
-      const s = d.session, space = matchingSpace(s.cwd, spaces(), panes(), f?.space);
-      const place = labelPlace(this.place(s), spacePlaces(spaces(), panes(), this.places));
+      // The space as Herdr's sidebar lists it: a worktree space under its main checkout's space.
+      const s = d.session, all = spaces(), ps = panes();
+      const space = sidebarSpace(matchingSpace(s.cwd, all, ps, f?.space), all, ps, this.places, this.repos);
+      const place = labelPlace(this.place(s), spacePlaces(all, ps, this.places));
       return card.child(sessionDetail(s, { ...d, pending: this.pending, spaceName: space?.name, place }, t, {
         back: (_e, cx) => this.back(cx), resume: (_e, cx) => this.resume(s, cx), copy: () => this.openMenu(s) }));
     }
