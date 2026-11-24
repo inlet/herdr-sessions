@@ -33,13 +33,24 @@ export function button(id, child, action, t, primary = false, off = null) {
 // space or worktree follows it. `gone`: the folder no longer exists, so it can't be resumed there:
 // red and struck through. Used by a row and by the session's header. A worktree gets the branch
 // icon before its name, as Herdr's spaces sidebar draws one.
-export function placeLine({ repo, tree, worktree }, gone, t) {
+// `branch` (branchTail): the branch after it, grey with the same icon, in the room the names leave.
+export function placeLine({ repo, tree, worktree }, gone, t, branch = null) {
   const name = (text, color) => div().text_color(gone ? t.ansi1 : color).when(gone, el => el.line_through()).child(text);
   return h_flex().min_w(0).gap(4).items_center()
     .child(name(repo, tree ? t.muted : t.foreground).flex_none().max_w(tree ? 150 : 240).truncate())
     .when(Boolean(tree), el => el.child(div().flex_none().text_color(gone ? t.ansi1 : t.dim).child('›'))
       .when(Boolean(worktree), el => el.child(branchIcon(gone ? t.ansi1 : t.dim)))
-      .child(name(tree, t.foreground).min_w(0).truncate()));
+      .child(name(tree, t.foreground).min_w(0).truncate()))
+    // Only the room the names leave (flex_1 from nothing), so the names are never cut for it. In that
+    // room, as high as the line, the branch wraps to a hidden second line unless the icon and a bit of
+    // its name fit (54px, 6 of them before the icon): never an icon on its own. ml(-4) takes back the
+    // line's gap, so a name with a branch after it is cut no sooner than one without.
+    .when(Boolean(branch), el => el.child(div().flex_1().min_w(0).self_stretch().relative().overflow_hidden().ml(-4)
+      .child(h_flex().absolute().inset_0().flex_wrap().items_center()
+        .child(div().w(0).h_full())
+        .child(h_flex().flex_grow(1).flex_basis(54).min_w(0).pl(6).gap(4).items_center()
+          .child(branchIcon(gone ? t.ansi1 : t.dim))
+          .child(name(branch, t.dim).min_w(0).truncate())))));
 }
 
 // The branch icon at 13px, as Herdr's spaces sidebar draws it before a worktree.

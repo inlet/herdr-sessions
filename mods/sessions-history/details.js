@@ -16,7 +16,7 @@ function folder(path) {
  * back to the list, what it was about, Resume and the copy menu, then everything known about it.
  * Nothing happens to the session until Resume is pressed.
  * `st`: { summary, summaryLoading, context, contextLoading, error, pending, spaceName,
- *   place: { repo, tree } as the row shows it }.
+ *   place: { repo, tree } as the row shows it, branch: the branch after it or null (branchTail) }.
  */
 export function sessionDetail(s, st, t, { back, resume, copy }) {
   const info = { ...s, ...(st.summary ?? {}) };
@@ -35,8 +35,8 @@ export function sessionDetail(s, st, t, { back, resume, copy }) {
     .child(h_flex().h(42).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().id('back').w(20).flex_none().cursor_pointer().text_color(t.muted).hover(x => x.text_color(t.foreground))
         .on_click(back).child('←'))
-      // Where it ran, as its row says it: "repo › space".
-      .child(div().flex_1().min_w(0).font_semibold().child(placeLine(st.place ?? { repo: s.title, tree: null }, !s.exists, t)))
+      // Where it ran, as its row says it: "repo › space", and the branch when it says something.
+      .child(div().flex_1().min_w(0).font_semibold().child(placeLine(st.place ?? { repo: s.title, tree: null }, !s.exists, t, st.branch)))
       .child(div().flex_none().text_size(12).text_color(t.dim).child(`${ago(s.activity)} ago`)))
     .child(div().id('session-detail').flex_1().min_h(0).p(14).overflow_y_scrollbar()
       .child(v_flex().gap(12)
