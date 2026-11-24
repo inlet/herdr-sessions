@@ -3,7 +3,7 @@ import { v_flex, h_flex, InputState, Input, Scrollbar, VirtualListScrollHandle, 
 import { exec, home, appHome, checking, theme, run, focused, spaces, panes, layout, knownAgents, settings,
   props, openOverlay, closeOverlay, notify } from 'herdr';
 import { resumePlan, matchingSpace, filterSessions, spaceScope, repoFromGit, ago, sessionState, placeFromGit, placeFromPath,
-  spaceFolders, spacePlaces, labelPlace, sidebarSpace, COPIES, copyValues } from './logic.mjs';
+  spaceFolders, spacePlaces, labelPlace, branchTail, sidebarSpace, COPIES, copyValues } from './logic.mjs';
 import { sessionDetail } from './details.js';
 import { segmented, iconButton, placeLine } from './ui.js';
 
@@ -246,8 +246,9 @@ export default class SessionHistory extends View {
       // The space as Herdr's sidebar lists it: a worktree space under its main checkout's space.
       const s = d.session, all = spaces(), ps = panes();
       const space = sidebarSpace(matchingSpace(s.cwd, all, ps, f?.space), all, ps, this.places, this.repos);
-      const place = labelPlace(this.place(s), spacePlaces(all, ps, this.places));
-      return card.child(sessionDetail(s, { ...d, pending: this.pending, spaceName: space?.name, place }, t, {
+      const at = this.place(s), place = labelPlace(at, spacePlaces(all, ps, this.places));
+      return card.child(sessionDetail(s, { ...d, pending: this.pending, spaceName: space?.name, place,
+        branch: branchTail(s.branch, at, place) }, t, {
         back: (_e, cx) => this.back(cx), resume: (_e, cx) => this.resume(s, cx), copy: () => this.openMenu(s) }));
     }
     return card
@@ -302,7 +303,8 @@ export default class SessionHistory extends View {
   // `names`: space names by place (spacePlaces), so a session where a space is shows its name.
   row(s, t, hovered = false, names = new Map()) {
     const state = sessionState(s).key;
-    const top = placeLine(labelPlace(this.place(s), names), state === 'missing', t);
+    const at = this.place(s), place = labelPlace(at, names);
+    const top = placeLine(place, state === 'missing', t, branchTail(s.branch, at, place));
     return h_flex().h(ROW).flex_none().px(8).gap(9).items_center().rounded(8).when(hovered, el => el.bg(t.hover))
       // The icon on the title's line, as in the Agents panel; the description under the title (16 + 9 in).
       // Centred on the line box it sits a pixel above the letters' middle, so it moves down one.

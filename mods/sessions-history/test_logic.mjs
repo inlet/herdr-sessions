@@ -115,6 +115,23 @@ assert.deepEqual(logic.placeFromPath('/Users/me/', '/Users/me'), {repo:'~', tree
   assert.deepEqual(logic.labelPlace({repo:'config', tree:null}, moved), {repo:'config', tree:'home-server', worktree:false});
   assert.deepEqual(logic.spaceFolders([sp('ha', 'x', '/Volumes/config/'), {...sp('vps', 'y', '/srv'), machine:'vps'}], []), ['/Volumes/config']);
 }
+// The branch after a row's place ("webshop ⎇ feat/login"), only when it says something: not main,
+// master or HEAD, and not when the name shown or the worktree's folder already says it (Herdr names a
+// worktree's folder after its branch, slashes as dashes).
+{
+  const main = {repo:'webshop', tree:null}, tree = {repo:'webshop', tree:'fix-login'};
+  const tail = (branch, place, label = {...place}) => logic.branchTail(branch, place, label);
+  assert.equal(tail('feat/checkout', main), 'feat/checkout');
+  for (const quiet of ['main', 'master', 'HEAD', '', null, undefined]) assert.equal(tail(quiet, main), null);
+  assert.equal(tail('fix/login', tree), null);
+  assert.equal(tail('Fix-Login', tree), null);
+  assert.equal(tail('webshop', main), null);
+  // A space's name replaces the worktree's: the folder still says it.
+  assert.equal(tail('fix/login', tree, {repo:'webshop', tree:'Payments'}), null);
+  // A worktree switched to another branch, and a space at a main checkout on a feature branch.
+  assert.equal(tail('feat/other', tree), 'feat/other');
+  assert.equal(tail('feat/x', main, {repo:'webshop', tree:'home-server'}), 'feat/x');
+}
 // The Space fact names the space as Herdr's spaces sidebar lists it: a worktree space sits under the
 // first local space at its repository's main checkout; any other space is its own.
 {

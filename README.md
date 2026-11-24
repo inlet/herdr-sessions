@@ -9,7 +9,7 @@ All your closed agent sessions in one list: Claude Code, Codex, Grok and OpenCod
 
 ## What it does
 
-- **Lists your closed sessions**, newest first: from this folder, this space (its repository with all its worktrees) or all spaces.
+- **Lists your closed sessions**, newest first, each with where it ran and its branch when that isn't `main`: from this folder, this space (its repository with all its worktrees) or all spaces.
 - **Opens a session** with a summary and its details, such as the branch, cost, models and pull requests.
 - **Resumes a session** in a new tab, in its own folder and in the mode it started in.
 - **Copies** the session ID, the resume command, the transcript path or the folder, with a right-click.

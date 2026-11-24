@@ -102,6 +102,15 @@ export function labelPlace(place, names) {
   const name = names.get(placeKey(place)), worktree = Boolean(place.tree);
   return name && name !== place.repo ? { repo: place.repo, tree: name, worktree } : { ...place, worktree };
 }
+// The branch a row shows after its place ("webshop ⎇ feat/login"), as Herdr's spaces sidebar shows only
+// what's unusual: not main, master or HEAD (detached), and not when the name shown (`label`, from
+// labelPlace) or the worktree's folder (`place.tree`) already says it. Herdr names a worktree's folder
+// after its branch with slashes as dashes, so fix/login in fix-login says nothing new.
+const sameName = (a, b) => typeof a === 'string' && a.toLowerCase().replaceAll('/', '-') === b.toLowerCase().replaceAll('/', '-');
+export function branchTail(branch, place, label) {
+  if (typeof branch !== 'string' || !branch || ['main', 'master', 'HEAD'].includes(branch)) return null;
+  return [place.tree, label.tree ?? label.repo].some(name => sameName(name, branch)) ? null : branch;
+}
 export function matchingSpace(cwd, allSpaces, allPanes, preferredId) {
   const target = normalizeFolder(cwd);
   if (!target.startsWith('/')) return null;
