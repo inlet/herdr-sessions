@@ -116,6 +116,19 @@ export function matchingSpace(cwd, allSpaces, allPanes, preferredId) {
   }
   return best;
 }
+// The space a space is listed under in Herdr's spaces sidebar: a worktree space (a linked worktree to
+// git) sits under the first local space at its repository's main checkout; any other space is its own.
+// `places` and `repos`: folder → { repo, tree } and folder → repository, as main.js's locate() keeps them.
+export function sidebarSpace(space, allSpaces, allPanes, places, repos) {
+  if (!space) return null;
+  const folder = spaceFolder(space, allPanes), repo = repos[folder];
+  if (!repo || !places[folder]?.tree) return space;
+  return allSpaces.find(other => {
+    if (other.machine) return false;
+    const at = spaceFolder(other, allPanes);
+    return repos[at] === repo && places[at]?.tree === null;
+  }) ?? space;
+}
 export function resumePlan(session, allSpaces, allPanes, preferredId) {
   const space = matchingSpace(session.cwd, allSpaces, allPanes, preferredId);
   const args = resumeArgs(session, space || {id:'', machine:null});

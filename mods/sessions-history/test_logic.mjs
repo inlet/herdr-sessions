@@ -115,6 +115,27 @@ assert.deepEqual(logic.placeFromPath('/Users/me/', '/Users/me'), {repo:'~', tree
   assert.deepEqual(logic.labelPlace({repo:'config', tree:null}, moved), {repo:'config', tree:'home-server', worktree:false});
   assert.deepEqual(logic.spaceFolders([sp('ha', 'x', '/Volumes/config/'), {...sp('vps', 'y', '/srv'), machine:'vps'}], []), ['/Volumes/config']);
 }
+// The Space fact names the space as Herdr's spaces sidebar lists it: a worktree space sits under the
+// first local space at its repository's main checkout; any other space is its own.
+{
+  const places = { '/code/shop': {repo:'shop', tree:null}, '/w/shop/fix-x': {repo:'shop', tree:'fix-x'},
+    '/w/api/feat': {repo:'api', tree:'feat'}, '/notes': {repo:'notes', tree:null} };
+  const repos = { '/code/shop': '/code/shop', '/w/shop/fix-x': '/code/shop', '/w/api/feat': '/code/api', '/notes': null };
+  const sp = (id, name, folder, machine = null) => ({id, name, machine, folder, tabs:[{id:`t-${id}`}]});
+  const main = sp('main', 'shop', '/stale'), tree = sp('tree', 'fix-x', '/w/shop/fix-x');
+  const all = [sp('remote', 'vps shop', '/code/shop', 'vps'), main, sp('second', 'shop again', '/code/shop'), tree,
+    sp('lone', 'feat', '/w/api/feat'), sp('notes', 'notes', '/notes')];
+  // The main checkout's space is where its first terminal is now, not its stale launch folder.
+  const ps = [{tab:'t-main', terminal:'t1', cwd:'/code/shop'}];
+  const listed = space => logic.sidebarSpace(space, all, ps, places, repos)?.id;
+  assert.equal(listed(tree), 'main');
+  assert.equal(listed(main), 'main');
+  assert.equal(listed(all.find(s => s.id === 'lone')), 'lone');   // no space at its main checkout
+  assert.equal(listed(all.find(s => s.id === 'notes')), 'notes'); // not a repository
+  assert.equal(logic.sidebarSpace(null, all, ps, places, repos), null);
+  // Until git has answered for the folders, a space is its own.
+  assert.equal(logic.sidebarSpace(tree, all, ps, {}, {})?.id, 'tree');
+}
 assert.equal(logic.formatDuration(7996600), '2h 13m');
 assert.equal(logic.formatDuration(45 * 60000), '45m');
 assert.equal(logic.formatDuration(20000), '20s');
