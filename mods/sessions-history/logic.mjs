@@ -102,6 +102,11 @@ export function labelPlace(place, names) {
   const name = names.get(placeKey(place)), worktree = Boolean(place.tree);
   return name && name !== place.repo ? { repo: place.repo, tree: name, worktree } : { ...place, worktree };
 }
+// Whether the list header goes compact (6px option padding instead of 9) in a panel this wide (logical px).
+// Its options are 236px wide, then two 8px gaps and the 22px refresh button, in 10px padding and a 1px
+// border: 296px with the count at nothing. Narrower, the button would run out of the panel; compact
+// saves 18px, so it fits down to the panel's 280px minimum.
+export const compactHeader = width => width < 300;
 // The branch a row shows after its place ("webshop ⎇ feat/login"), as Herdr's spaces sidebar shows only
 // what's unusual: not main, master or HEAD (detached), and not when the name shown (`label`, from
 // labelPlace) or the worktree's folder (`place.tree`) already says it. Herdr names a worktree's folder

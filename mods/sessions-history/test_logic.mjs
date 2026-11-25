@@ -115,6 +115,12 @@ assert.deepEqual(logic.placeFromPath('/Users/me/', '/Users/me'), {repo:'~', tree
   assert.deepEqual(logic.labelPlace({repo:'config', tree:null}, moved), {repo:'config', tree:'home-server', worktree:false});
   assert.deepEqual(logic.spaceFolders([sp('ha', 'x', '/Volumes/config/'), {...sp('vps', 'y', '/srv'), machine:'vps'}], []), ['/Volumes/config']);
 }
+// The list header goes compact below 300px: at 296px the options, two gaps and the refresh button
+// fill it with the count at nothing, so narrower would push the button out.
+assert.equal(logic.compactHeader(280), true);
+assert.equal(logic.compactHeader(299), true);
+assert.equal(logic.compactHeader(300), false);
+assert.equal(logic.compactHeader(368), false);
 // The branch after a row's place ("webshop ⎇ feat/login"), only when it says something: not main,
 // master or HEAD, and not when the name shown or the worktree's folder already says it (Herdr names a
 // worktree's folder after its branch, slashes as dashes).
