@@ -1,11 +1,11 @@
-import { View, div, image, svg } from 'gpui-kit';
+import { View, div, svg } from 'gpui-kit';
 import { v_flex, h_flex, InputState, Input, Scrollbar, VirtualListScrollHandle, v_virtual_list } from 'gpui-base';
 import { exec, home, appHome, checking, theme, run, focused, spaces, panes, layout, knownAgents, settings,
   props, openOverlay, closeOverlay, notify } from 'herdr';
 import { resumePlan, matchingSpace, compactHeader, filterSessions, spaceScope, repoFromGit, ago, sessionState, placeFromGit, placeFromPath,
   spaceFolders, spacePlaces, labelPlace, branchTail, sidebarSpace, COPIES, copyValues } from './logic.mjs';
 import { sessionDetail } from './details.js';
-import { segmented, iconButton, placeLine, fitOrHide } from './ui.js';
+import { segmented, iconButton, placeLine, fitOrHide, agentIcon } from './ui.js';
 
 const ROW = 46;
 const SCOPES = [['folder', 'This folder'], ['space', 'This space'], ['all', 'All spaces']];
@@ -20,12 +20,6 @@ function panelPath(node, path = []) {
     if (found) return found;
   }
   return null;
-}
-
-// The harness's icon from the app's program table, as the Agents panel draws it: a one-color glyph or a picture.
-function icon(p, size, color) {
-  if (!p?.icon) return div().size(size).flex_none();
-  return p.tint ? svg(p.icon).size(size).flex_none().text_color(color) : image(p.icon).w(size).h(size).flex_none();
 }
 
 export default class SessionHistory extends View {
@@ -251,6 +245,7 @@ export default class SessionHistory extends View {
       const space = sidebarSpace(matchingSpace(s.cwd, all, ps, f?.space), all, ps, this.places, this.repos);
       const at = this.place(s), place = labelPlace(at, spacePlaces(all, ps, this.places));
       return card.child(sessionDetail(s, { ...d, pending: this.pending, spaceName: space?.name, place,
+        program: this.programs[s.program ?? 'claude'],
         branch: branchTail(s.branch, at, place) }, t, {
         back: (_e, cx) => this.back(cx), resume: (_e, cx) => this.resume(s, cx), copy: () => this.openMenu(s) }));
     }
@@ -314,7 +309,7 @@ export default class SessionHistory extends View {
       // Centred on the line box it sits a pixel above the letters' middle, so it moves down one.
       .child(v_flex().flex_1().min_w(0).gap(2)
         .child(h_flex().min_w(0).gap(9).items_center()
-          .child(div().flex_none().relative().top(1).child(icon(this.programs[s.program ?? 'claude'], 16, t.foreground)))
+          .child(div().flex_none().relative().top(1).child(agentIcon(this.programs[s.program ?? 'claude'], 16, t.foreground)))
           .child(top.flex_1()))
         .child(div().min_w(0).pl(25).truncate().text_size(11.5).text_color(t.dim).child(s.description || s.title)))
       .child(div().flex_none().text_size(11).text_color(t.dim).child(ago(s.activity)))

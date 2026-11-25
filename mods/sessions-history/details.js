@@ -2,7 +2,7 @@ import { div } from 'gpui-kit';
 import { v_flex, h_flex } from 'gpui-base';
 import { home } from 'herdr';
 import { formatSessionTime, contextLabel, compactDescription, ago, formatDuration, formatCost, modelName, sessionState, stateColor, harnessName, modeLabel } from './logic.mjs';
-import { button, placeLine, branchIcon } from './ui.js';
+import { button, placeLine, branchIcon, agentIcon } from './ui.js';
 
 // The full folder, with home as ~.
 function folder(path) {
@@ -16,7 +16,8 @@ function folder(path) {
  * back to the list, what it was about, Resume and the copy menu, then everything known about it.
  * Nothing happens to the session until Resume is pressed.
  * `st`: { summary, summaryLoading, context, contextLoading, error, pending, spaceName,
- *   place: { repo, tree } as the row shows it, branch: the branch after it or null (branchTail) }.
+ *   place: { repo, tree } as the row shows it, branch: the branch after it or null (branchTail),
+ *   program: the harness's entry in the app's program table, for its icon (may be missing) }.
  */
 export function sessionDetail(s, st, t, { back, resume, copy }) {
   const info = { ...s, ...(st.summary ?? {}) };
@@ -35,7 +36,9 @@ export function sessionDetail(s, st, t, { back, resume, copy }) {
     .child(h_flex().h(42).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().id('back').w(20).flex_none().cursor_pointer().text_color(t.muted).hover(x => x.text_color(t.foreground))
         .on_click(back).child('←'))
-      // Where it ran, as its row says it: "repo › space", and the branch when it says something.
+      // As its row starts: the harness's icon, a pixel down to sit on the letters' middle; then where it
+      // ran, "repo › space", and the branch when it says something.
+      .when(Boolean(st.program?.icon), el => el.child(div().flex_none().relative().top(1).child(agentIcon(st.program, 16, t.foreground))))
       .child(div().flex_1().min_w(0).font_semibold().child(placeLine(st.place ?? { repo: s.title, tree: null }, !s.exists, t, st.branch)))
       .child(div().flex_none().text_size(12).text_color(t.dim).child(`${ago(s.activity)} ago`)))
     .child(div().id('session-detail').flex_1().min_h(0).p(14).overflow_y_scrollbar()
@@ -51,6 +54,10 @@ export function sessionDetail(s, st, t, { back, resume, copy }) {
           .child(div().text_size(11).text_color(t.dim).child(info.summarySource === 'recap' && !st.summaryLoading ? 'Recap' : 'Summary'))
           .child(div().text_size(12.5).text_color(st.summaryLoading ? t.dim : t.foreground).child(short)))
         .child(v_flex().gap(6).pt(12).border_t(1).border_color(t.border).text_size(12)
+          // Which harness it ran in, by its icon and name: what Resume starts again.
+          .child(fact('Agent', h_flex().gap(6).items_center()
+            .when(Boolean(st.program?.icon), el => el.child(agentIcon(st.program, 14, t.foreground)))
+            .child(harnessName(s))))
           // What the row's dot means, in words.
           .child(fact('Status', h_flex().gap(6).items_center()
             .child(div().flex_none().text_color(stateColor(state.key, t)).child('●')).child(state.label)))

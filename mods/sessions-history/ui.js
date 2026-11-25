@@ -1,7 +1,7 @@
 // Small pieces of the panel: a segmented control, a header icon button and a button; and the place
-// line that a row and a session's header share.
+// line and agent icon that a row and a session's header share.
 
-import { div, svg } from 'gpui-kit';
+import { div, image, svg } from 'gpui-kit';
 import { h_flex } from 'gpui-base';
 
 // Options side by side, one chosen: [ This folder | This space | All spaces ]. `compact`: 6px side
@@ -61,6 +61,13 @@ export function fitOrHide(child, { least = null, end = false } = {}) {
     .child(h_flex().absolute().inset_0().flex_wrap().items_center().when(end, el => el.justify_end())
       .child(div().w(0).h_full())
       .child(least == null ? child.flex_none() : child.flex_grow(1).flex_basis(least).min_w(0)));
+}
+
+// A harness's icon from the app's program table (`p`, its entry), as the Agents panel draws it: a
+// one-color glyph tinted `color`, or a picture. Without one, an empty space of the same size.
+export function agentIcon(p, size, color) {
+  if (!p?.icon) return div().size(size).flex_none();
+  return p.tint ? svg(p.icon).size(size).flex_none().text_color(color) : image(p.icon).w(size).h(size).flex_none();
 }
 
 // The branch icon at 13px, as Herdr's spaces sidebar draws it before a worktree.
