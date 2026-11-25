@@ -80,10 +80,11 @@ def as_text(messages):
 
 
 def file_messages(path):
-    """(role, text) for each message in a transcript file: Grok's chat, or Claude Code's or Codex's."""
-    grok = path.name == 'chat_history.jsonl'
+    """(role, text) for each message in a transcript file: Grok's chat, Pi's session, or Claude Code's or Codex's."""
+    grok = path.name == 'chat_history.jsonl'; pi = reader.PI_FILE.fullmatch(path.name)
     for row in reader.records(path):
         if grok: yield reader.grok_message(row) or (None, '')
+        elif pi: yield reader.pi_message(row) or (None, '')
         # Claude Code's rows are typed user or assistant; anything else may be Codex's.
         elif row.get('type') in ('user', 'assistant'): yield row['type'], message_text(row)
         else: yield reader.codex_message(row) or (None, '')
@@ -183,10 +184,10 @@ def session_summary(source, cache_dir, generate=generate_summary):
     return cached_summary(source, cache_dir, generate)
 
 
-def session_file(root, sid, codex_root=None, grok_root=None):
-    """A session's transcript: Claude Code's under `root`, Codex's under `codex_root`, Grok's chat under `grok_root`."""
+def session_file(root, sid, codex_root=None, grok_root=None, pi_root=None):
+    """A session's transcript: Claude Code's under `root`, Codex's under `codex_root`, Grok's chat under `grok_root`, Pi's under `pi_root`."""
     if not UUID.fullmatch(sid): raise RuntimeError('Invalid UUID')
-    paths = [path for path, found, _ in reader.transcripts(root, codex_root, grok_root) if found == sid]
+    paths = [path for path, found, _ in reader.transcripts(root, codex_root, grok_root, pi_root) if found == sid]
     if len(paths) != 1: raise RuntimeError('Session file missing or not unique')
     return paths[0]
 
@@ -194,7 +195,7 @@ def session_file(root, sid, codex_root=None, grok_root=None):
 def session_source(sid, at):
     """What session `sid` is summarized from, wherever its harness keeps it (`at`: reader.locations())."""
     if reader.OPENCODE_ID.fullmatch(sid): return opencode_source(at.opencode, sid)
-    return file_source(session_file(at.claude, sid, at.codex, at.grok))
+    return file_source(session_file(at.claude, sid, at.codex, at.grok, at.pi))
 
 
 if __name__ == '__main__':

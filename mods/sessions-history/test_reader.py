@@ -513,9 +513,141 @@ class OpenCodeTests(unittest.TestCase):
         class Lsof: stdout = 'p1652\nfcwd\nn/Users/me/app\n'; returncode = 0
         calls = []
         def run(argv, **_): calls.append(argv); return Ps() if argv[0] == 'ps' else Lsof()
-        self.assertEqual(reader.opencode_processes(run=run, now=1795533610000),
+        self.assertEqual(reader.processes('opencode', run=run, now=1795533610000),
                          [(1795533600000, '/Users/me/app', 'opencode --session ses_e111fbe53ffeSVx1dkTIKqfIR6')])
         self.assertEqual(calls[1][-1], '1652')
+
+
+PI_ID = '01a21002-bc8c-7000-8c73-9a4102cd2b7f'
+
+
+def pi_says(role, at, content, **more):
+    """An entry of Pi's with a message in it, written at `at`."""
+    return {'type': 'message', 'id': 'a1b2c3d4', 'parentId': None, 'timestamp': at, 'message': {'role': role, 'content': content, **more}}
+
+
+def pi_usage(dollars): return {'input': 10, 'output': 20, 'totalTokens': 30, 'cost': {'input': 0, 'output': dollars, 'total': dollars}}
+
+
+def pi_answer(at, text, stop='stop', dollars=0.02):
+    return pi_says('assistant', at, [{'type': 'thinking', 'thinking': 'private'}, {'type': 'text', 'text': text}] if text else [],
+                   model='claude-opus-5-5', stopReason=stop, usage=pi_usage(dollars))
+
+
+def pi_file(root, cwd, entries, sid=PI_ID, group=True):
+    """A Pi session file: in a folder named after its folder (`--home-me--`), or loose in a session folder of its own."""
+    folder = root / ('--' + cwd.lstrip('/').replace('/', '-') + '--') if group else root
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f'2026-11-25T00-02-24-524Z_{sid}.jsonl'
+    path.write_text(lines([{'type': 'session', 'version': 3, 'id': sid, 'timestamp': '2026-11-25T00:02:24.524Z', 'cwd': cwd}, *entries]))
+    return path
+
+
+class PiTests(unittest.TestCase):
+    """Pi keeps a session as a tree of entries: ~/.pi/agent/sessions/--<folder>--/<time>_<id>.jsonl."""
+    CHAT = [
+        {'type': 'thinking_level_change', 'timestamp': '2026-11-25T00:02:24.718Z', 'thinkingLevel': 'off'},
+        {'type': 'model_change', 'timestamp': '2026-11-25T00:04:25.351Z', 'provider': 'anthropic', 'modelId': 'claude-opus-5-5'},
+        # The system prompt Pi saves with the first request: not something the person wrote.
+        pi_says('system', '2026-11-25T00:05:10.298Z', '', sections={'preamble': 'You are a coding assistant'}),
+        pi_says('user', '2026-11-25T00:05:10.300Z', [{'type': 'text', 'text': 'Add search'}]),
+        pi_answer('2026-11-25T00:05:12.000Z', 'Let me look.', stop='toolUse', dollars=0.01),
+        pi_says('toolResult', '2026-11-25T00:05:12.500Z', [{'type': 'text', 'text': 'private tool output'}], toolCallId='c1', toolName='read'),
+        pi_answer('2026-11-25T00:05:20.300Z', 'Search is in.'),
+    ]
+
+    def test_a_session(self):
+        with tempfile.TemporaryDirectory() as d:
+            row = reader.pi_row(pi_file(Path(d), d, self.CHAT))
+            self.assertEqual((row['id'], row['program'], row['cwd'], row['exists']), (PI_ID, 'pi', d, True))
+            self.assertEqual(row['description'], 'Add search')
+            self.assertEqual(row['ending'], 'finished')
+            self.assertEqual(row['models'], ['claude-opus-5-5'])
+            self.assertEqual(row['started'], 1795564944524)
+            self.assertEqual(row['duration'], 10000)  # from the question to the last answer
+            self.assertAlmostEqual(row['cost'], 0.03)
+            self.assertEqual((row['branch'], row['startMode'], row['prs']), (None, None, []))
+
+    def test_its_name(self):
+        named = [{'type': 'session_info', 'timestamp': '2026-11-25T00:06:00.000Z', 'name': 'First name'},
+                 {'type': 'session_info', 'timestamp': '2026-11-25T00:07:00.000Z', 'name': 'Search in the list'}]
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(reader.pi_row(pi_file(Path(d), d, self.CHAT + named))['description'], 'Search in the list')
+            # A name taken away again: its first question.
+            cleared = named + [{'type': 'session_info', 'timestamp': '2026-11-25T00:08:00.000Z'}]
+            self.assertEqual(reader.pi_row(pi_file(Path(d), d, self.CHAT + cleared))['description'], 'Add search')
+
+    def test_all_its_costs(self):
+        # Usage outside the conversation counts too: cache warming, and summaries made on compacting.
+        more = [{'type': 'usage', 'timestamp': '2026-11-25T00:06:00.000Z', 'kind': 'cache_warm', 'usage': pi_usage(0.005)},
+                {'type': 'compaction', 'timestamp': '2026-11-25T00:07:00.000Z', 'summary': 'Search added', 'firstKeptEntryId': 'a1b2c3d4', 'usage': pi_usage(0.004)}]
+        with tempfile.TemporaryDirectory() as d:
+            self.assertAlmostEqual(reader.pi_row(pi_file(Path(d), d, self.CHAT + more))['cost'], 0.039)
+            self.assertIsNone(reader.pi_row(pi_file(Path(d), d, self.CHAT[:4]))['cost'])
+
+    def test_how_a_pi_session_ended(self):
+        ask = pi_says('user', '2026-11-25T00:06:00.000Z', 'And filtering now?')
+        cases = {
+            'unanswered': [ask],
+            'mid-action': [ask, pi_answer('2026-11-25T00:06:01.000Z', '', stop='toolUse')],
+            'interrupted': [ask, pi_answer('2026-11-25T00:06:01.000Z', 'First', stop='aborted')],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            for expected, more in cases.items():
+                self.assertEqual(reader.pi_row(pi_file(Path(d), d, self.CHAT + more))['ending'], expected, expected)
+            # A failed request answered nothing.
+            failed = self.CHAT + [ask, pi_answer('2026-11-25T00:06:01.000Z', '', stop='error')]
+            self.assertEqual(reader.pi_row(pi_file(Path(d), d, failed))['ending'], 'unanswered')
+            # Cut off at its length limit: it stopped mid-work.
+            cut = self.CHAT + [ask, pi_answer('2026-11-25T00:06:01.000Z', 'Half', stop='length')]
+            self.assertEqual(reader.pi_row(pi_file(Path(d), d, cut))['ending'], 'mid-action')
+            # Nothing said yet.
+            row = reader.pi_row(pi_file(Path(d), d, self.CHAT[:3]))
+            self.assertEqual((row['ending'], row['description']), (None, 'No description available'))
+
+    def test_listed_without_open_ones(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'sessions'
+            path = pi_file(root, d, self.CHAT)
+            (path.parent / 'notes.jsonl').write_text('{}\n')  # not a session file of Pi's
+            rows = list(reader.sessions(Path(d) / 'no-claude', pi_root=root))
+            self.assertEqual([(r['id'], r['program'], r['transcript']) for r in rows], [(PI_ID, 'pi', str(path))])
+            self.assertEqual(list(reader.sessions(Path(d) / 'no-claude', active={PI_ID}, pi_root=root)), [])
+            # With a session folder of its own (PI_CODING_AGENT_SESSION_DIR), Pi keeps its files loose in it.
+            loose = Path(d) / 'loose'
+            pi_file(loose, d, self.CHAT, group=False)
+            self.assertEqual([r['id'] for r in reader.sessions(Path(d) / 'no-claude', pi_root=loose)], [PI_ID])
+
+    def test_where_pi_keeps_them(self):
+        at = reader.locations('/home/me', env={})
+        self.assertEqual(at.pi, Path('/home/me/.pi/agent/sessions'))
+        self.assertEqual(reader.locations('/home/me', env={'PI_CODING_AGENT_DIR': '/pi'}).pi, Path('/pi/sessions'))
+        self.assertEqual(reader.locations('/home/me', env={'PI_CODING_AGENT_DIR': '/pi', 'PI_CODING_AGENT_SESSION_DIR': '/s'}).pi, Path('/s'))
+
+    def test_open_pi_sessions(self):
+        # Pi holds no file open and keeps no list, and a running pi hides its arguments: the sessions
+        # in a running pi's folder whose file changed since it started are open.
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'sessions'
+            new = pi_file(root, d, self.CHAT)
+            old = pi_file(root, d, self.CHAT, sid='01a21002-0000-7000-8c73-9a4102cd2b7f')
+            elsewhere = pi_file(root, '/other', self.CHAT, sid='01a21002-1111-7000-8c73-9a4102cd2b7f')
+            os.utime(old, (1795533500, 1795533500))
+            for path in (new, elsewhere): os.utime(path, (1795533700, 1795533700))
+            self.assertEqual(reader.pi_open_ids(root, [(1795533600000, d, 'pi')]), {PI_ID})
+            self.assertEqual(reader.pi_open_ids(root, []), set())
+            loose = Path(d) / 'loose'
+            os.utime(pi_file(loose, d, self.CHAT, group=False), (1795533700, 1795533700))
+            pi_file(loose, '/other', self.CHAT, sid='01a21002-1111-7000-8c73-9a4102cd2b7f', group=False)
+            self.assertEqual(reader.pi_open_ids(loose, [(1795533600000, d, 'pi')]), {PI_ID})
+
+    def test_running_pi_programs(self):
+        # Pi sets its own process title, so ps shows `pi` without its arguments; pi-rpc is another program.
+        class Ps: stdout = '  2915       00:10 pi  \n  2916       00:10 pi-rpc\n'; returncode = 0
+        class Lsof: stdout = 'p2915\nfcwd\nn/Users/me/app\n'; returncode = 0
+        run = lambda argv, **_: Ps() if argv[0] == 'ps' else Lsof()
+        self.assertEqual(reader.processes('pi', run=run, now=1795533610000), [(1795533600000, '/Users/me/app', 'pi  ')])
 
 
 if __name__ == '__main__': unittest.main()

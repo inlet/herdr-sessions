@@ -1,6 +1,6 @@
 # Sessions panel for the Herdr desktop app
 
-All your closed agent sessions in one list: Claude Code, Codex, Grok and OpenCode. See what you worked on and how it ended, then resume right where you left off.
+All your closed agent sessions in one list: Claude Code, Codex, Grok, OpenCode and Pi. See what you worked on and how it ended, then resume right where you left off.
 
 ![The Herdr desktop app with the Sessions panel open next to a terminal](images/app.png)
 
