@@ -2,10 +2,10 @@ import { View, div, image, svg } from 'gpui-kit';
 import { v_flex, h_flex, InputState, Input, Scrollbar, VirtualListScrollHandle, v_virtual_list } from 'gpui-base';
 import { exec, home, appHome, checking, theme, run, focused, spaces, panes, layout, knownAgents, settings,
   props, openOverlay, closeOverlay, notify } from 'herdr';
-import { resumePlan, matchingSpace, filterSessions, spaceScope, repoFromGit, ago, sessionState, placeFromGit, placeFromPath,
+import { resumePlan, matchingSpace, compactHeader, filterSessions, spaceScope, repoFromGit, ago, sessionState, placeFromGit, placeFromPath,
   spaceFolders, spacePlaces, labelPlace, branchTail, sidebarSpace, COPIES, copyValues } from './logic.mjs';
 import { sessionDetail } from './details.js';
-import { segmented, iconButton, placeLine } from './ui.js';
+import { segmented, iconButton, placeLine, fitOrHide } from './ui.js';
 
 const ROW = 46;
 const SCOPES = [['folder', 'This folder'], ['space', 'This space'], ['all', 'All spaces']];
@@ -34,6 +34,7 @@ export default class SessionHistory extends View {
     if (props()?.copyMenu) { this.at = 0; this.handle = cx.focus_handle(); this.handle.focus(); return; }
     this.rows = []; this.scope = 'space'; this.loading = false; this.error = ''; this.pending = false; this.lastLaunch = 0;
     this.opened = null; // { session, summary, summaryLoading, context, contextLoading, error }
+    this.narrow = false; // the panel is narrower than the list header's full width (compactHeader)
     this.listScroll = VirtualListScrollHandle.new();
     this.pointerY = null; // the pointer over the list, in list px from its first row's top, unscrolled
     this.active = new Set(); this.scanning = false;
@@ -240,6 +241,8 @@ export default class SessionHistory extends View {
     const count = this.pending ? 'Opening…' : this.loading && !this.rows.length ? '' : `${rows.length} closed`;
     // The card, header and list in the style of Herdr's side panels.
     const card = v_flex().id('session-history-root').size_full().min_h(0).rounded(10).overflow_hidden()
+      // Its width, in window px, decides whether the list header goes compact.
+      .on_size_change((size, cx) => { const narrow = compactHeader(size.width / (settings().zoom || 1)); if (narrow !== this.narrow) { this.narrow = narrow; cx.notify(); } })
       .bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13);
     const d = this.opened;
     if (d) {
@@ -253,8 +256,9 @@ export default class SessionHistory extends View {
     }
     return card
       .child(h_flex().h(42).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(segmented('scope', SCOPES, this.scope, (k, cx) => { this.scope = k; this.prefetch(cx); cx.notify(); }, t))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(count))
+        .child(segmented('scope', SCOPES, this.scope, (k, cx) => { this.scope = k; this.prefetch(cx); cx.notify(); }, t, this.narrow))
+        // All of the count or none: in a narrow panel a lone "…" says nothing.
+        .child(fitOrHide(div().text_size(12).text_color(t.dim).child(count), { end: true }))
         .child(iconButton('reload', 'mods/sessions-history/refresh.svg', (_e, cx) => this.refresh(cx), t, this.loading)))
       .child(v_flex().flex_none().px(10).pt(10)
         .child(h_flex().h(30).flex_none().px(8).items_center().rounded(8).border_1().border_color(t.border).bg(t.background)

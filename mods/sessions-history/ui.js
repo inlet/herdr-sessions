@@ -4,10 +4,12 @@
 import { div, svg } from 'gpui-kit';
 import { h_flex } from 'gpui-base';
 
-// Two options side by side, one chosen: [ This space | All spaces ].
-export function segmented(id, options, value, pick, t) {
-  return h_flex().flex_none().p(2).gap(2).rounded(8).bg(t.chrome).border_1().border_color(t.border)
-    .children(options.map(([key, label]) => div().id(`${id}-${key}`).px(9).py(2).rounded(6).text_size(12).cursor_pointer()
+// Options side by side, one chosen: [ This folder | This space | All spaces ]. `compact`: 6px side
+// padding instead of 9, for a narrow panel (compactHeader). Should that still not fit, the options shrink
+// with … rather than push what follows them out of the panel.
+export function segmented(id, options, value, pick, t, compact = false) {
+  return h_flex().min_w(0).p(2).gap(2).rounded(8).bg(t.chrome).border_1().border_color(t.border)
+    .children(options.map(([key, label]) => div().id(`${id}-${key}`).min_w(0).truncate().px(compact ? 6 : 9).py(2).rounded(6).text_size(12).cursor_pointer()
       .bg(key === value ? t.background : t.chrome).text_color(key === value ? t.foreground : t.muted)
       .when(key === value, (el) => el.font_semibold())
       .hover((el) => el.text_color(t.foreground)).on_click((_e, cx) => { if (key !== value) pick(key, cx); }).child(label)));
@@ -41,16 +43,24 @@ export function placeLine({ repo, tree, worktree }, gone, t, branch = null) {
     .when(Boolean(tree), el => el.child(div().flex_none().text_color(gone ? t.ansi1 : t.dim).child('›'))
       .when(Boolean(worktree), el => el.child(branchIcon(gone ? t.ansi1 : t.dim)))
       .child(name(tree, t.foreground).min_w(0).truncate()))
-    // Only the room the names leave (flex_1 from nothing), so the names are never cut for it. In that
-    // room, as high as the line, the branch wraps to a hidden second line unless the icon and a bit of
-    // its name fit (54px, 6 of them before the icon): never an icon on its own. ml(-4) takes back the
-    // line's gap, so a name with a branch after it is cut no sooner than one without.
-    .when(Boolean(branch), el => el.child(div().flex_1().min_w(0).self_stretch().relative().overflow_hidden().ml(-4)
-      .child(h_flex().absolute().inset_0().flex_wrap().items_center()
-        .child(div().w(0).h_full())
-        .child(h_flex().flex_grow(1).flex_basis(54).min_w(0).pl(6).gap(4).items_center()
-          .child(branchIcon(gone ? t.ansi1 : t.dim))
-          .child(name(branch, t.dim).min_w(0).truncate())))));
+    // In the room the names leave, so they are never cut for it, and only when the icon and a bit of its
+    // name fit (54px, 6 of them before the icon). ml(-4) takes back the line's gap, so a name with a
+    // branch after it is cut no sooner than one without.
+    .when(Boolean(branch), el => el.child(fitOrHide(h_flex().pl(6).gap(4).items_center()
+      .child(branchIcon(gone ? t.ansi1 : t.dim))
+      .child(name(branch, t.dim).min_w(0).truncate()), { least: 54 }).ml(-4)));
+}
+
+// A box for what may go when its row is short of room: it takes the room the row leaves (flex_1 from
+// nothing), as high as the row, and shows `child` only when enough of it fits, never a sliver (a lone
+// icon, a lone "…"). It can't measure, so the child sits in a wrapping row after a 0-wide item and
+// wraps to a second line the box hides when it doesn't fit. `least`: px the child needs, from which it
+// grows and may cut itself with …; without it, all of the child must fit. `end`: to the right.
+export function fitOrHide(child, { least = null, end = false } = {}) {
+  return div().flex_1().min_w(0).self_stretch().relative().overflow_hidden()
+    .child(h_flex().absolute().inset_0().flex_wrap().items_center().when(end, el => el.justify_end())
+      .child(div().w(0).h_full())
+      .child(least == null ? child.flex_none() : child.flex_grow(1).flex_basis(least).min_w(0)));
 }
 
 // The branch icon at 13px, as Herdr's spaces sidebar draws it before a worktree.
