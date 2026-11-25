@@ -169,6 +169,26 @@ class SummaryTests(unittest.TestCase):
             self.assertEqual(source.key, str(path.resolve()))
             self.assertEqual(source.text(), 'User:\nAdd search\n\nAssistant:\nSearch is in.')
 
+    def test_a_pi_session(self):
+        sid = '01a21002-bc8c-7000-8c73-9a4102cd2b7f'
+        with tempfile.TemporaryDirectory() as d:
+            at = summary.reader.locations(d, env={})
+            folder = at.pi / '--repo--'; folder.mkdir(parents=True)
+            path = folder / f'2026-11-25T00-02-24-524Z_{sid}.jsonl'
+            said = lambda role, content, **more: {'type': 'message', 'message': {'role': role, 'content': content, **more}}
+            path.write_text('\n'.join(json.dumps(r) for r in [
+                {'type': 'session', 'version': 3, 'id': sid, 'cwd': '/repo'},
+                said('system', '', sections={'preamble': 'You are a coding assistant'}),
+                said('user', 'Add search'),
+                said('assistant', [{'type': 'thinking', 'thinking': 'private'}, {'type': 'toolCall', 'id': 'c1', 'name': 'bash'}], stopReason='toolUse'),
+                said('toolResult', [{'type': 'text', 'text': 'private tool output'}], toolCallId='c1'),
+                said('assistant', [{'type': 'text', 'text': 'Search is in.'}], stopReason='stop'),
+            ]) + '\n')
+            source = summary.session_source(sid, at)
+            self.assertEqual(source.key, str(path.resolve()))
+            self.assertEqual(source.text(), 'User:\nAdd search\n\nAssistant:\nSearch is in.')
+            self.assertIsNone(source.recap())
+
     def test_an_opencode_session(self):
         import sqlite3
         sid = 'ses_e111fbe53ffeSVx1dkTIKqfIR6'

@@ -228,6 +228,11 @@ assert.equal(filterSessions([{...s, branch:'fix/login'}], 'fix/log', {folder:'/o
   const codex = {...s, program:'codex', cwd:'/repo'};
   assert.equal(logic.copyValues(codex).resume, `cd /repo && codex --no-daemon resume ${s.id}`);
   assert.deepEqual(resumeArgs(codex, {id:'local', machine:null}).argv, ['codex', '--no-daemon', 'resume', s.id]);
+  // Pi: --session finds it by its id; Pi has no permission modes to bring back.
+  const pi = {...s, program:'pi', cwd:'/repo', startMode:null};
+  assert.deepEqual(resumeArgs(pi, {id:'local', machine:null}).argv, ['pi', '--session', s.id]);
+  assert.equal(logic.copyValues(pi).resume, `cd /repo && pi --session ${s.id}`);
+  assert.equal(logic.harnessName(pi), 'Pi');
   // Without a description or title, a tab or space is named after the harness.
   const bare = {...codex, cwd:'/repo/app', description:'', title:''};
   assert.equal(logic.resumePlan(bare, allSpaces, [], null).args.name, 'Codex session');

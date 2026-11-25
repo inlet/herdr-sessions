@@ -20,6 +20,8 @@ export const HARNESSES = {
   grok: { name: 'Grok', resume: s => ['grok', '--resume', s.id, ...(s.startMode === 'yolo' ? ['--always-approve'] : [])] },
   // OpenCode's ids are its own (ses_…), not UUIDs.
   opencode: { name: 'OpenCode', id: /^ses_[0-9A-Za-z]{10,60}$/, resume: s => ['opencode', '--session', s.id] },
+  // Pi finds a session by its id wherever it ran; it has no permission modes to bring back.
+  pi: { name: 'Pi', resume: s => ['pi', '--session', s.id] },
 };
 // A permission mode for people, as Claude Code's mode switch names them; an unknown one as it is.
 const MODES = { bypassPermissions: 'Bypass permissions', acceptEdits: 'Accept edits', plan: 'Plan', auto: 'Auto',

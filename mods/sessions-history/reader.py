@@ -464,15 +464,15 @@ def elapsed_ms(etime):
     return (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000
 
 
-def opencode_processes(run=subprocess.run, now=None):
-    """Running OpenCode programs: (started, epoch ms; folder; arguments)."""
+def processes(name, run=subprocess.run, now=None):
+    """Running programs called `name` (opencode, pi): (started, epoch ms; folder; arguments)."""
     now = time.time() * 1000 if now is None else now
     try: ps = run(['ps', '-axo', 'pid=,etime=,args='], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.TimeoutExpired): return []
     found = {}
     for line in (ps.stdout or '').splitlines():
         parts = line.split(None, 2)
-        if len(parts) < 3 or Path(parts[2].split()[0]).name != 'opencode': continue
+        if len(parts) < 3 or Path(parts[2].split()[0]).name != name: continue
         elapsed = elapsed_ms(parts[1])
         if elapsed is not None: found[parts[0]] = (now - elapsed, parts[2])
     if not found: return []
@@ -500,6 +500,97 @@ def opencode_open_ids(db, running):
     for started, folder, args in running:
         if OPENCODE_ID.search(args): continue
         ids.update(sid for sid, directory, updated in rows if directory == folder and number(updated) is not None and updated >= started)
+    return ids
+
+
+# ---- Pi: ~/.pi/agent/sessions/--<folder, / as ->--/<time>_<id>.jsonl, a tree of entries ----
+
+PI_FILE = re.compile(r'\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d{3}Z_(?P<id>[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\.jsonl')
+
+
+def pi_message(record):
+    """('user' | 'assistant', text): a person's or Pi's own words. None for anything else: the system
+    prompt Pi saves, tool calls and their results, thinking, what extensions add."""
+    message = record.get('message') if record.get('type') == 'message' else None
+    if not isinstance(message, dict) or message.get('role') not in ('user', 'assistant'): return None
+    text = grok_text(message.get('content'))  # a string, or text parts among images, thinking and tool calls
+    return (message['role'], text) if text else None
+
+
+def pi_ending(record):
+    """As ending_of, for an entry of Pi's: an answer ends with its stopReason; a tool's result is mid-action."""
+    message = record.get('message') if record.get('type') == 'message' else None
+    role = message.get('role') if isinstance(message, dict) else None
+    if role == 'user': return 'unanswered'
+    if role == 'toolResult': return 'mid-action'
+    if role != 'assistant': return None
+    # A failed request answered nothing; toolUse, length (cut off) and deferred stopped mid-work.
+    return {'stop': 'finished', 'aborted': 'interrupted', 'error': 'unanswered'}.get(message.get('stopReason'), 'mid-action')
+
+
+def pi_cost(usage):
+    """What a usage record cost in dollars, as Pi priced it; None without one."""
+    cost = usage.get('cost') if isinstance(usage, dict) else None
+    return number(cost.get('total')) if isinstance(cost, dict) else None
+
+
+def pi_row(path):
+    """A Pi session's row, with the same fields as a Claude Code session's. Pi only appends to the
+    file, so in file order the last entries are where it was left."""
+    sid = PI_FILE.fullmatch(path.name)['id']
+    cwd = None; started = None; name = None; prompt = None; ending = None; cost = None; duration = None; began = None; models = set()
+    for record in records(path):
+        kind = record.get('type')
+        if kind == 'session':
+            if isinstance(record.get('cwd'), str): cwd = record['cwd']
+            started = epoch_ms(record.get('timestamp'))
+        elif kind == 'session_info': name = one_line(record.get('name')) or None  # its last name; none when taken away
+        message = record.get('message') if kind == 'message' and isinstance(record.get('message'), dict) else {}
+        # Every usage counts, as Pi's own total: answers, cache warming, summaries made on compacting.
+        spent = pi_cost(message.get('usage') if message else record.get('usage'))
+        if spent is not None: cost = (cost or 0) + spent
+        if message.get('role') == 'assistant' and isinstance(message.get('model'), str): models.add(message['model'][:100])
+        said = pi_message(record)
+        if prompt is None and said and said[0] == 'user': prompt = one_line(said[1]) or None
+        end = pi_ending(record); ending = end or ending
+        # A turn: from your message to the answer that ends it (the entry's time: when Pi wrote it).
+        when = epoch_ms(record.get('timestamp'))
+        if end == 'unanswered' and message.get('role') == 'user':
+            if began is None: began = when
+        elif end in ('finished', 'interrupted', 'unanswered') and began is not None and when is not None and when >= began:
+            duration = (duration or 0) + when - began; began = None
+    return {'id': sid, 'program': 'pi', 'title': Path(cwd).name if cwd else 'Pi session',
+            'description': name or prompt or 'No description available', 'summary': None, 'summarySource': None,
+            'cwd': cwd, 'branch': None, 'startMode': None, 'activity': path.stat().st_mtime, 'exists': bool(cwd and Path(cwd).is_dir()),
+            'ending': ending, 'cost': cost, 'duration': duration, 'started': started, 'linesAdded': None,
+            'linesRemoved': None, 'models': sorted(models), 'prs': []}
+
+
+def pi_files(root):
+    """Pi's session files: in a folder per working folder, or loose in a session folder set for it."""
+    if not root or not root.is_dir(): return
+    for path in (*root.glob('*.jsonl'), *root.glob('*/*.jsonl')):
+        found = PI_FILE.fullmatch(path.name)
+        if found: yield path, found['id']
+
+
+def pi_open_ids(root, running):
+    """Pi sessions open now. Pi holds no file open and keeps no list, and a running pi shows no
+    arguments in ps (it sets its own process title), so from its running programs: the sessions
+    made in a pi's folder whose file changed since it started. A resumed one counts once it writes."""
+    ids = set()
+    for started, folder, _ in running:
+        # Pi's folder for a working folder's sessions, as it names it; loose files say theirs inside.
+        group = root / ('--' + re.sub(r'[/\\:]', '-', re.sub(r'^[/\\]', '', folder)) + '--')
+        for path in (*group.glob('*.jsonl'), *root.glob('*.jsonl')):
+            found = PI_FILE.fullmatch(path.name)
+            try:
+                if not found or path.stat().st_mtime * 1000 < started: continue
+                if path.parent == root:
+                    with path.open('rb') as stream: header = json.loads(stream.readline())
+                    if not isinstance(header, dict) or header.get('cwd') != folder: continue
+            except (OSError, ValueError, UnicodeError): continue
+            ids.add(found['id'])
     return ids
 
 
@@ -562,8 +653,8 @@ def save_cache(cache_file, kept):
     except OSError: pass
 
 
-def transcripts(root, codex_root=None, grok_root=None):
-    """(file, session id, how to read it) for every session with a file: Claude Code's, Codex's, Grok's."""
+def transcripts(root, codex_root=None, grok_root=None, pi_root=None):
+    """(file, session id, how to read it) for every session with a file: Claude Code's, Codex's, Grok's, Pi's."""
     if root and root.is_dir():
         for project in root.iterdir():
             if not project.is_dir(): continue
@@ -576,6 +667,7 @@ def transcripts(root, codex_root=None, grok_root=None):
     if grok_root and grok_root.is_dir():
         for path in grok_root.glob('*/*/chat_history.jsonl'):
             if UUID.fullmatch(path.parent.name): yield path, path.parent.name, grok_row
+    for path, sid in pi_files(pi_root): yield path, sid, pi_row
 
 
 def stamp(path):
@@ -590,14 +682,14 @@ def stamp(path):
     return result
 
 
-def sessions(root, active=(), cache_file=None, codex_root=None, codex_names=None, grok_root=None, opencode_db=None):
+def sessions(root, active=(), cache_file=None, codex_root=None, codex_names=None, grok_root=None, opencode_db=None, pi_root=None):
     """Every closed session's row. A closed transcript doesn't change, so with a cache file only
     new or changed ones are read again; the rest (gigabytes of them) cost a stat each. OpenCode's
     are queried from its database each time."""
     saved = load_cache(cache_file) if cache_file else {}
     names = codex_thread_names(codex_names) if codex_names else {}
     kept = {}
-    for path, sid, read in transcripts(root, codex_root, grok_root):
+    for path, sid, read in transcripts(root, codex_root, grok_root, pi_root):
         if sid in active: continue
         try:
             now = stamp(path); key = str(path); hit = saved.get(key)
@@ -623,26 +715,27 @@ def locations(home=None, env=os.environ):
     codex = Path(env.get('CODEX_HOME') or home / '.codex')
     grok = Path(env.get('GROK_HOME') or home / '.grok')
     data = Path(env.get('XDG_DATA_HOME') or home / '.local/share')
+    pi = Path(env.get('PI_CODING_AGENT_SESSION_DIR') or Path(env.get('PI_CODING_AGENT_DIR') or home / '.pi/agent') / 'sessions')
     return SimpleNamespace(claude=claude / 'projects', registry=claude / 'sessions', codex=codex / 'sessions',
                            codex_names=codex / 'session_index.jsonl', grok=grok / 'sessions',
-                           grok_open=grok / 'active_sessions.json', opencode=data / 'opencode/opencode.db')
+                           grok_open=grok / 'active_sessions.json', opencode=data / 'opencode/opencode.db', pi=pi)
 
 
 def session_id(sid):
-    """Whether `sid` can be a session's id: a UUID (Claude Code, Codex, Grok) or OpenCode's ses_…."""
+    """Whether `sid` can be a session's id: a UUID (Claude Code, Codex, Grok, Pi) or OpenCode's ses_…."""
     return isinstance(sid, str) and bool(UUID.fullmatch(sid) or OPENCODE_ID.fullmatch(sid))
 
 
 def open_ids(at):
     """Every harness's sessions that are open now, by id."""
     return (active_session_ids(at.registry) | codex_open_ids() | grok_open_ids(at.grok_open)
-            | opencode_open_ids(at.opencode, opencode_processes()))
+            | opencode_open_ids(at.opencode, processes('opencode')) | pi_open_ids(at.pi, processes('pi')))
 
 
 def known(sid, at):
     """Whether a session with this id is kept anywhere."""
     if OPENCODE_ID.fullmatch(sid): return opencode_updated(at.opencode, sid) is not None
-    return any(found == sid for _, found, _ in transcripts(at.claude, at.codex, at.grok))
+    return any(found == sid for _, found, _ in transcripts(at.claude, at.codex, at.grok, at.pi))
 
 
 if __name__ == '__main__':
@@ -660,5 +753,5 @@ if __name__ == '__main__':
     else:
         # reader.py [cache file]: every harness's closed sessions, one JSON row a line.
         cache = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-        for row in sessions(at.claude, open_ids(at), cache, at.codex, at.codex_names, at.grok, at.opencode):
+        for row in sessions(at.claude, open_ids(at), cache, at.codex, at.codex_names, at.grok, at.opencode, at.pi):
             print(json.dumps(row, ensure_ascii=False), flush=True)
